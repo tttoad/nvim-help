@@ -1,6 +1,6 @@
 package action
 
-const v version = "0.0.1"
+const v version = "0.0.2"
 
 var _ Action = (version)("ss")
 

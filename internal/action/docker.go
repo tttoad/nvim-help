@@ -6,14 +6,18 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path"
+	"strings"
 	"unsafe"
 
 	"nvim-help/internal/utils"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/pkg/archive"
 
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/go-connections/nat"
@@ -24,7 +28,8 @@ const (
 	start = "start"
 	stop  = "stop"
 
-	imageName = "debug/go:latest"
+	imageName         = "debug/go"
+	argsGoVersionName = "GO_VERSION"
 )
 
 var (
@@ -61,6 +66,7 @@ func (d *debugByDocker) Run(args []string) *Result {
 	if len(args) < 1 {
 		return NewFailResult(ErrIncorrectRequest)
 	}
+
 	var err error
 	if d.cli, err = client.NewClientWithOpts(client.FromEnv); err != nil {
 		return NewFailResult(err)
@@ -79,7 +85,7 @@ func (d *debugByDocker) Run(args []string) *Result {
 
 	switch act {
 	case "start":
-		resp, err := d.start(ctx, *d.args)
+		resp, err := d.Start(ctx, *d.args)
 		if err != nil {
 			return NewFailResult(err)
 		}
@@ -109,7 +115,7 @@ type startResponse struct {
 	Port uint16 `json:"port"`
 }
 
-func (d *debugByDocker) start(ctx context.Context, request string) (resp *startResponse, err error) {
+func (d *debugByDocker) Start(ctx context.Context, request string) (resp *startResponse, err error) {
 	req := &startRequset{}
 	if err = json.Unmarshal(unsafe.Slice(unsafe.StringData(request), len(request)), req); err != nil {
 		return nil, err
@@ -184,7 +190,7 @@ func (d *debugByDocker) start(ctx context.Context, request string) (resp *startR
 }
 
 type stopRequest struct {
-	ProjectPath string
+	ProjectPath string `json:"project_path"`
 }
 
 func (d *debugByDocker) Stop(ctx context.Context, request string) (err error) {
@@ -192,7 +198,34 @@ func (d *debugByDocker) Stop(ctx context.Context, request string) (err error) {
 	if err = json.Unmarshal(unsafe.Slice(unsafe.StringData(request), len(request)), req); err != nil {
 		return err
 	}
-	return d.deleteContainer(context.Background(), path.Base(req.ProjectPath))
+
+	if err = d.deleteContainer(ctx, path.Base(req.ProjectPath)); err != nil && !strings.Contains(
+		err.Error(),
+		"Is the docker daemon running",
+	) {
+		return err
+	}
+
+	return nil
+}
+
+type buildRequest struct {
+	ProjectPath    string `json:"project_path"`
+	DockerfilePath string `json:"dockerfile_path"`
+}
+
+func (d *debugByDocker) Build(ctx context.Context, request string) (err error) {
+	req := &buildRequest{}
+	if err = json.Unmarshal(unsafe.Slice(unsafe.StringData(request), len(request)), req); err != nil {
+		return err
+	}
+
+	goVersion, err := d.getGoVersionByProject(req.ProjectPath)
+	if err != nil {
+		return err
+	}
+
+	return d.build(ctx, req.DockerfilePath, goVersion)
 }
 
 func (d *debugByDocker) deleteContainer(ctx context.Context, containerName string) (err error) {
@@ -215,4 +248,35 @@ func (d *debugByDocker) deleteContainer(ctx context.Context, containerName strin
 	}
 
 	return nil
+}
+
+func (d *debugByDocker) build(ctx context.Context, dockerfilePath string, goVersion string) (err error) {
+	reader, err := archive.TarWithOptions(dockerfilePath, &archive.TarOptions{})
+	if err != nil {
+		return err
+	}
+
+	args := make(map[string]*string, 0)
+	args[argsGoVersionName] = &goVersion
+	resp, err := d.cli.ImageBuild(ctx, reader, types.ImageBuildOptions{
+		Tags:      []string{imageName + goVersion},
+		BuildArgs: args,
+	})
+	if err != nil {
+		return err
+	}
+
+	// TODO stream
+	_, err = io.ReadAll(resp.Body)
+
+	return err
+}
+
+func (d *debugByDocker) getGoVersionByProject(ProjectPath string) (goVersion string, err error) {
+	modPath, err := utils.GetModPath(ProjectPath)
+	if err != nil {
+		return "", err
+	}
+
+	return utils.GetGoVersion(path.Join(modPath, "go.mod"))
 }

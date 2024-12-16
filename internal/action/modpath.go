@@ -1,16 +1,11 @@
 package action
 
 import (
-	"errors"
 	"flag"
-	"os"
-	"path/filepath"
+	"nvim-help/internal/utils"
 )
 
-var (
-	_                  Action = (*modPath)(nil)
-	ErrModFileNotFount        = errors.New("mod file not found")
-)
+var _ Action = (*modPath)(nil)
 
 type modPath struct {
 	CurPath *string
@@ -34,28 +29,15 @@ func NewModPath() Action {
 // Run implements Action.
 func (m *modPath) Run(args []string) *Result {
 	m.fs.Parse(args)
-	curPath, err := filepath.Abs(filepath.Dir(*m.CurPath))
+
+	modPath, err := utils.GetModPath(*m.CurPath)
 	if err != nil {
 		return NewFailResult(err)
 	}
 
-	for curPath != "" {
-		fileList, err := os.ReadDir(curPath)
-		if err != nil {
-			return NewFailResult(err)
-		}
-
-		for _, file := range fileList {
-			if !file.IsDir() && file.Name() == "go.mod" {
-				return NewSuccessResult(&modPathData{
-					Path: curPath,
-				})
-			}
-		}
-		curPath = filepath.Join(curPath, "../")
-	}
-
-	return NewFailResult(ErrModFileNotFount)
+	return NewSuccessResult(&modPathData{
+		Path: modPath,
+	})
 }
 
 func (m *modPath) Action() string {

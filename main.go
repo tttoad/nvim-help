@@ -16,5 +16,6 @@ func main() {
 	e.Register(action.NewModPath())
 	e.Register(action.NewDebugByDocker())
 	e.Register(action.NewYamlEdit())
+	e.Register(action.NewTagsEdit())
 	e.Run(os.Args[1], os.Args[2:])
 }

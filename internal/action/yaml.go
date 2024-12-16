@@ -9,16 +9,27 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	ExampleCommet = `- project: projectName(filePath)
+  args: args1 args2 args3
+  env:
+    - name: nameExample
+      value: example
+	`
+)
+
 var (
-	_                  Action = (*yamlEdit)(nil)
-	ErrProjectNotfound        = errors.New("project not found")
-	envExample                = EnvConfig{Name: "nameExample", Value: "example"}
+	_                    Action = (*yamlEdit)(nil)
+	ErrProjectNotfound          = errors.New("project not found")
+	ErrContentUnexpected        = errors.New("unexpected content")
+	envExample                  = EnvConfig{Name: "nameExample", Value: "example"}
 )
 
 type yamlEdit struct {
 	fs       *flag.FlagSet
 	filePath *string
 	project  *string
+	// TODO(tttoad): to []string json.
 	args     *string
 }
 
@@ -82,7 +93,6 @@ func (y *yamlEdit) read() (r *RunConfig, err error) {
 		if !found {
 			r = &RunConfig{
 				Project: *y.project,
-				Env:     []EnvConfig{envExample},
 			}
 			*runConfigs = append(*runConfigs, r)
 		}
@@ -161,7 +171,14 @@ func (y *yamlEdit) upset(fc func(r *RunConfigs)) (err error) {
 	// oldData.Kind is docComment
 	if len(oldData.Content) > 0 {
 		cp(oldData.Content[0], &newData)
+	} else {
+		// Add example,when creating new configuration
+		if len(newData.Content) <= 0 {
+			return ErrContentUnexpected
+		}
+		newData.Content[0].HeadComment = ExampleCommet
 	}
+
 	nb, err := yaml.Marshal(newData)
 	if err != nil {
 		return err
