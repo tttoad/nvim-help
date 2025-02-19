@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"path"
 	"strings"
 	"unsafe"
@@ -36,12 +35,6 @@ var (
 	_ Action = (*debugByDocker)(nil)
 
 	ErrIncorrectRequest = errors.New("action is not valid")
-
-	delveMount = mount.Mount{
-		Type:   mount.TypeBind,
-		Source: os.Getenv("GOPATH") + "/bin/delve",
-		Target: "/root/delve",
-	}
 )
 
 type debugByDocker struct {
@@ -153,13 +146,25 @@ func (d *debugByDocker) Start(ctx context.Context, request string) (resp *startR
 		return nil, err
 	}
 
+	env, err := utils.GetGoEnv()
+	if err != nil {
+		return nil, err
+	}
+
 	workPath := path.Join("/root", path.Base(req.ProjectPath))
-	mounts := make([]mount.Mount, 0, 2)
-	mounts = append(mounts, delveMount)
+	mounts := make([]mount.Mount, 0, 1)
 	mounts = append(mounts, mount.Mount{
 		Type:   mount.TypeBind,
 		Source: utils.ConvertEnvPlace(req.ProjectPath),
 		Target: workPath,
+	}, mount.Mount{
+		Type:   mount.TypeBind,
+		Source: env.GOCACHE,
+		Target: "/root/.cache/go-build",
+	}, mount.Mount{
+		Type:   mount.TypeBind,
+		Source: env.GOMODCACHE,
+		Target: "/root/go/pkg/mod",
 	})
 
 	respCC, err := d.cli.ContainerCreate(
