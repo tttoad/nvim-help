@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"os"
 
 	"nvim-help/internal/action"
@@ -17,5 +18,8 @@ func main() {
 	e.Register(action.NewDebugByDocker())
 	e.Register(action.NewYamlEdit())
 	e.Register(action.NewTagsEdit())
+	if len(os.Args) < 2 {
+		log.Fatal("need args")
+	}
 	e.Run(os.Args[1], os.Args[2:])
 }

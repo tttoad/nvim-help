@@ -3,8 +3,6 @@ package action
 import (
 	"bytes"
 	"flag"
-	"os"
-	"strconv"
 	"strings"
 	"unicode"
 )
@@ -38,18 +36,7 @@ func (t *tagsEdit) Run(args []string) *Result {
 	if err := t.fs.Parse(args); err != nil {
 		return NewFailResult(err)
 	}
-	f, _ := os.Create("./11.txt")
-	for _, arg := range args {
-		f.WriteString(arg)
-		f.WriteString("\n")
-	}
-	f.WriteString(strconv.Itoa(len(args[0])))
-	f.WriteString("\n")
-	for _, c := range args[0] {
-		f.WriteString(strconv.Itoa(int(c)))
-		f.WriteString("\n")
-	}
-	f.Close()
+
 	return &Result{
 		Code: SuccessCode,
 		Data: addTags(*t.source, *t.tag),
@@ -81,6 +68,8 @@ func getChangeEdit(str string, tag string) (string, int, bool) {
 		result = tag + ":\"" + toCamelCase(key[0]) + "\""
 	case "form-req":
 		result = "form:\"" + toUnderline(key[0]) + "\" binding:\"required\""
+	case "bind":
+		result = "binding:\"required\""
 	default:
 		result = tag + ":\"" + toUnderline(key[0]) + "\""
 	}
@@ -110,7 +99,9 @@ func toUnderline(str string) string {
 		}
 
 		if unicode.IsUpper(s) {
-			buff.WriteByte('_')
+			if  index == 0 || !unicode.IsUpper(rune(str[index-1])) {
+				buff.WriteByte('_')
+			}
 			buff.WriteRune(unicode.ToLower(s))
 			continue
 		}
